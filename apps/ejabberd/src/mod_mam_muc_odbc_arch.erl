@@ -23,7 +23,7 @@
          purge_multiple_messages/9]).
 
 %% Called from mod_mam_odbc_async_writer
--export([prepare_message/8,
+-export([prepare_message/7,
          archive_messages/2,
          archive_messages/3]).
 
@@ -158,24 +158,15 @@ write_message(Host, SMessID, RoomID, SRoomID, SFromNick, SData) ->
     ok.
 
 
--spec prepare_message(ejabberd:server(), mod_mam:message_id(), mod_mam:archive_id(),
+-spec prepare_message(mod_mam:message_id(), mod_mam:archive_id(),
         _LocJID :: ejabberd:jid(), _RemJID :: ejabberd:jid(),
         _SrcJID :: ejabberd:jid(), incoming, packet()) -> list().
-prepare_message(Host, MessID, RoomID,
+prepare_message(MessID, RoomID,
                 _LocJID=#jid{luser=_RoomName},
                 _RemJID=#jid{},
                 _SrcJID=#jid{lresource=FromNick}, incoming, Packet) ->
-    prepare_message1(Host, MessID, RoomID, FromNick, Packet).
-
-
-prepare_message1(Host, MessID, RoomID, FromNick, Packet) ->
-    SRoomID = integer_to_list(RoomID),
-    SFromNick = mongoose_rdbms:escape(FromNick),
     Data = packet_to_stored_binary(Packet),
-    EscFormat = mongoose_rdbms:escape_format(Host),
-    SData = mongoose_rdbms:escape_binary(EscFormat, Data),
-    SMessID = integer_to_list(MessID),
-    [SMessID, SRoomID, SFromNick, SData].
+    [MessID, RoomID, FromNick, Data].
 
 
 -spec archive_messages(atom() | ejabberd:lserver(), Acc :: [[any(), ...]]) -> any().
