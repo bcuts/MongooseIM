@@ -174,7 +174,7 @@ process_sm_iq(From, To,
                                                       attrs = [],
                                                       children = []}},
                                                out]),
-                case mongoose_acc:get(privacy_check, Res, allow) of
+                case mongoose_acc:retrieve(privacy_check, jid:to_lower(From), Res, allow) of
                     allow -> get_last_iq(IQ, SubEl, User, Server);
                     deny ->
                         IQ#iq{type = error, sub_el = [SubEl, ?ERR_FORBIDDEN]}
