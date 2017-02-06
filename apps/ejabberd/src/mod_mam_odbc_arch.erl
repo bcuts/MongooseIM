@@ -72,10 +72,10 @@ start(Host, Opts) ->
             ok
     end,
 
-    {ok, _} = mongoose_rdbms:prepare(mam_archive_size, mam_message, [user_id],
-                                     [<<"SELECT COUNT(*) FROM mam_message ">>,
-                                      index_hint_sql(Host),
-                                      <<"WHERE user_id = ?">>]),
+    mongoose_rdbms:prepare(mam_archive_size, mam_message, [user_id],
+                           [<<"SELECT COUNT(*) FROM mam_message ">>,
+                            index_hint_sql(Host),
+                            <<"WHERE user_id = ?">>]),
 
     ok.
 
@@ -252,7 +252,7 @@ prepare_insert(Name, NumRows) ->
     Table = mam_message,
     Fields = [id, user_id, remote_bare_jid, remote_resource, direction, from_jid, message],
     Query = rdbms_queries:create_bulk_insert_query(Table, Fields, NumRows),
-    {ok, _} = mongoose_rdbms:prepare(Name, Table, Fields, Query),
+    mongoose_rdbms:prepare(Name, Table, Fields, Query),
     ok.
 
 -spec lookup_messages(Result :: any(), Host :: ejabberd:server(),
