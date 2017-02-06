@@ -165,16 +165,15 @@ process_sm_iq(From, To,
                     ejabberd_hooks:run_fold(privacy_get_user_list, Server,
                         #userlist{}, [User, Server]),
                 ?TEMPORARY,
-                Acc = mongoose_acc:new(),
-                Res = ejabberd_hooks:run_fold(privacy_check_packet,
-                                              Server, Acc,
-                                              [User, Server, UserListRecord,
-                                               {To, From,
-                                               #xmlel{name = <<"presence">>,
-                                                      attrs = [],
-                                                      children = []}},
-                                               out]),
-                case mongoose_acc:retrieve(privacy_check, jid:to_lower(From), Res, allow) of
+                Packet = #xmlel{name = <<"presence">>,
+                                attrs = [],
+                                children = []},
+                Acc = mongoose_acc:from_map(#{name => <<"iq">>, type => Type, attrs => [],
+                                              element => Packet}),
+                {_, Res} = mongoose_privacy:privacy_check_packet(Acc, Server, User,
+                                                                 UserListRecord, To, From,
+                                                                 Packet, out),
+                case Res of
                     allow -> get_last_iq(IQ, SubEl, User, Server);
                     deny ->
                         IQ#iq{type = error, sub_el = [SubEl, ?ERR_FORBIDDEN]}
