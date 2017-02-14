@@ -47,6 +47,7 @@ parallel_test_cases() ->
      session_established,
      wait_for_resumption,
      resume_session
+    %  aggressively_pipelined_resume
      ].
 
 parallel_manual_ack_test_cases() ->
@@ -669,6 +670,34 @@ mk_resume_stream(SMID, PrevH) ->
             true = escalus_pred:is_sm_resumed(SMID, Resumed),
             {Conn, [{smid, SMID} | Props], Features}
     end.
+
+aggressively_pipelined_resume(Config) ->
+    AliceSpec = [{manual_ack, true} | given_fresh_spec(Config, alice)],
+    Messages = [<<"msg-1">>, <<"msg-2">>, <<"msg-3">>],
+    escalus:fresh_story(Config, [{bob, 1}], fun(Bob) ->
+        {_, SMID} = buffer_unacked_messages_and_die(AliceSpec, Bob, Messages),
+        %% Resume the session.
+
+        ct:print("LOL1 :( ~p", [AliceSpec]),
+
+        {ok, Alice, _} = escalus_connection:connect(AliceSpec),
+
+        Username = proplists:get_value(username, AliceSpec),
+        Password = proplists:get_value(password, AliceSpec),
+        Payload = <<0:8,Username/binary,0:8,Password/binary>>,
+
+        Stream = escalus_stanza:stream_start(proplists:get_value(server, AliceSpec), <<"jabber:client">>),
+        Auth = escalus_stanza:auth(<<"PLAIN">>, [#xmlcdata{content = base64:encode(Payload)}]),
+        AuthStream = escalus_stanza:stream_start(proplists:get_value(server, AliceSpec), <<"jabber:client">>),
+        Resume = escalus_stanza:resume(SMID, 2),
+
+        escalus_client:send(Alice, [Stream, Auth, AuthStream, Resume]),
+        Resumed = lists:foldl(fun(I, _) -> escalus_connection:get_stanza(Alice, {get_resumed, I}) end,
+                              undefined, lists:seq(1, 6)),
+        escalus:assert(is_sm_resumed, [SMID], Resumed),
+
+        escalus_connection:stop(Alice)
+    end).
 
 buffer_unacked_messages_and_die(AliceSpec, Bob, Messages) ->
     Steps = [start_stream,

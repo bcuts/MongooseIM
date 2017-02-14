@@ -248,6 +248,13 @@ handle_info({timeout, _Ref, activate}, State) ->
 handle_info(timeout, State) ->
     proc_lib:hibernate(gen_server, enter_loop, [?MODULE, [], State]),
     {noreply, State, ?HIBERNATE_TIMEOUT};
+handle_info({exml, Elems}, #state{c2s_pid = C2SPid, max_stanza_size = MaxSize} = State) ->
+    ValidElems = replace_too_big_elems_with_stream_error(Elems, MaxSize),
+    [gen_fsm:send_event(C2SPid, wrap_if_xmlel(E)) || E <- ValidElems],
+    {noreply, State, ?HIBERNATE_TIMEOUT};
+handle_info({exml_error, Reason}, #state{c2s_pid = C2SPid} = State) ->
+    gen_fsm:send_event(C2SPid, {xmlstreamerror, Reason}),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State, ?HIBERNATE_TIMEOUT}.
 
@@ -318,31 +325,17 @@ process_data([Element|Els], #state{c2s_pid = C2SPid} = State)
             process_data(Els, State)
     end;
 %% Data processing for connectors receivind data as string.
-process_data(Data, #state{parser = Parser,
-                          shaper_state = ShaperState,
-                          max_stanza_size = MaxSize,
-                          c2s_pid = C2SPid} = State) ->
+process_data(Data, #state{parser = Parser, shaper_state = ShaperState} = State) ->
     ?DEBUG("Received XML on stream = \"~s\"", [Data]),
     Size = size(Data),
     mongoose_metrics:update(global,
                               [data, xmpp, received, xml_stanza_size], Size),
 
     maybe_run_keep_alive_hook(Size, State),
-    case exml_stream:parse(Parser, Data) of
-        {ok, NewParser, Elems} ->
-            {NewShaperState, Pause} = shaper:update(ShaperState, Size),
-            ValidElems =
-                replace_too_big_elems_with_stream_error(Elems, MaxSize),
-            [gen_fsm:send_event(C2SPid, wrap_if_xmlel(E)) || E <- ValidElems],
-            maybe_pause(Pause, State),
-            State#state{parser = NewParser,
-                        shaper_state = NewShaperState};
-        {error, Reason} ->
-            {NewShaperState, Pause} = shaper:update(ShaperState, Size),
-            gen_fsm:send_event(C2SPid, {xmlstreamerror, Reason}),
-            maybe_pause(Pause, State),
-            State#state{shaper_state = NewShaperState}
-    end.
+    exml_server:parse(Parser, Data),
+    {NewShaperState, Pause} = shaper:update(ShaperState, Size),
+    maybe_pause(Pause, State),
+    State#state{shaper_state = NewShaperState}.
 
 wrap_if_xmlel(#xmlel{} = E) -> {xmlstreamelement, E};
 wrap_if_xmlel(E) -> E.
@@ -381,16 +374,16 @@ element_wrapper(Element) ->
     Element.
 
 reset_parser(undefined) ->
-    {ok, NewParser} = exml_stream:new_parser([{start_tag, <<"stream:stream">>}]),
+    {ok, NewParser} = exml_server:new_parser([{start_tag, <<"stream:stream">>}]),
     NewParser;
 reset_parser(Parser) ->
-    {ok, NewParser} = exml_stream:reset_parser(Parser),
+    {ok, NewParser} = exml_server:reset_parser(Parser),
     NewParser.
 
 free_parser(undefined) ->
     ok;
 free_parser(Parser) ->
-    exml_stream:free_parser(Parser).
+    exml_server:free_parser(Parser).
 
 gen_server_call_or_noproc(Pid, Message) ->
     try
